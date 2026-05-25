@@ -10,14 +10,21 @@ import {
 
 import { TasksService } from './tasks.service';
 
-@Controller('projects/:projectId/tasks')
+@Controller()
 export class TasksController {
 
   constructor(
     private readonly tasksService: TasksService,
   ) {}
 
-  @Get()
+  @Get('tasks/all')
+  findAllTasks() {
+
+    return this.tasksService
+      .findAllTasks();
+  }
+
+  @Get('projects/:projectId/tasks')
   findAll(
     @Param('projectId')
     projectId: string,
@@ -28,7 +35,7 @@ export class TasksController {
     );
   }
 
-  @Post()
+  @Post('projects/:projectId/tasks')
   create(
     @Param('projectId')
     projectId: string,
@@ -36,6 +43,7 @@ export class TasksController {
     @Body()
     task: {
       name: string;
+      priority: string
     },
   ) {
 
@@ -45,7 +53,9 @@ export class TasksController {
     });
   }
 
-  @Patch(':taskId')
+  @Patch(
+    'projects/:projectId/tasks/:taskId'
+  )
   toggleComplete(
     @Param('taskId')
     taskId: string,
@@ -55,7 +65,9 @@ export class TasksController {
       .toggleComplete(+taskId);
   }
 
-  @Delete(':taskId')
+  @Delete(
+    'projects/:projectId/tasks/:taskId'
+  )
   remove(
     @Param('taskId')
     taskId: string,

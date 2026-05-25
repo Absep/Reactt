@@ -17,6 +17,15 @@ export class TasksService {
     });
   }
 
+  findAllTasks() {
+
+    return this.prisma.task.findMany({
+      include: {
+        project: true,
+      },
+    });
+  }
+
   create(task: {
     name: string;
     projectId: number;

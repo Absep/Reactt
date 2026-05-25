@@ -9,8 +9,14 @@ export class ProjectsService {
   ) {}
 
   findAll() {
-    return this.prisma.project.findMany();
+    
+  return this.prisma.project.findMany({
+    include: {
+      tasks: true,
+    },
+  });
   }
+  
 
   findOne(id: number) {
     return this.prisma.project.findUnique({

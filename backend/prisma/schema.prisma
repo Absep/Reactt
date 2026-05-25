@@ -11,7 +11,7 @@ model Project {
   id        Int      @id @default(autoincrement())
   name      String
   status    String
-  priority  String
+  priority  String   
 
   tasks     Task[]
 }
@@ -19,6 +19,7 @@ model Project {
 model Task {
   id          Int     @id @default(autoincrement())
   name        String
+  priority    String  @default("Medium")
   completed   Boolean @default(false)
 
   projectId   Int

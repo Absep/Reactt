@@ -8,18 +8,40 @@ export class TasksService {
     private prisma: PrismaService,
   ) {}
 
-  findAll(projectId: number) {
+  findAll(
+    projectId: number,
+    page: number,
+    limit: number,
+  ) {
+
+    const skip =
+      (page - 1)
+      * limit;
 
     return this.prisma.task.findMany({
       where: {
         projectId,
       },
+
+      skip,
+      take: limit,
     });
   }
 
-  findAllTasks() {
+  findAllTasks(
+    page: number,
+    limit: number,
+  ) {
+
+    const skip =
+      (page - 1)
+      * limit;
 
     return this.prisma.task.findMany({
+
+      skip,
+      take: limit,
+
       include: {
         project: true,
       },

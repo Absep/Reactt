@@ -8,14 +8,26 @@ export class ProjectsService {
     private prisma: PrismaService,
   ) {}
 
-  findAll() {
-    
-  return this.prisma.project.findMany({
-    include: {
-      tasks: true,
-    },
-  });
-  }
+  findAll(
+  page: number,
+  limit: number,
+) {
+
+  const skip =
+    (page - 1)
+    * limit;
+
+  return this.prisma
+    .project.findMany({
+
+      skip,
+      take: limit,
+
+      include: {
+        tasks: true,
+      },
+    });
+}
   
 
   findOne(id: number) {

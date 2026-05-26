@@ -6,47 +6,90 @@ import {
   Param,
   Patch,
   Post,
+  UseGuards,
+  Query,
 } from '@nestjs/common';
 
-import { ProjectsService } from './projects.service';
-import { UseGuards } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { AuthGuard }
+from '@nestjs/passport';
+
+import { ProjectsService }
+from './projects.service';
+
+import { Roles }
+from '../auth/roles.decorator';
+
+import { RolesGuard }
+from '../auth/roles.guard';
 
 @Controller('projects')
+@UseGuards(
+  AuthGuard('jwt')
+)
 export class ProjectsController {
 
   constructor(
-    private readonly projectsService : ProjectsService,
+    private readonly projectsService:
+    ProjectsService,
   ) {}
 
-  @UseGuards(AuthGuard('jwt'))
   @Get()
-  findAll() {
-    return this.projectsService.findAll();
-  }
+findAll(
+
+  @Query('page')
+  page = '1',
+
+  @Query('limit')
+  limit = '5',
+
+) {
+
+  return this.projectsService
+    .findAll(
+      +page,
+      +limit,
+    );
+}
 
   @Get(':id')
   findOne(
-    @Param('id') id: string,
+    @Param('id')
+    id: string,
   ) {
-    return this.projectsService.findOne(+id);
+
+    return this.projectsService
+      .findOne(+id);
   }
 
+  @UseGuards(
+    RolesGuard
+  )
+  @Roles('ADMIN')
   @Post()
   create(
+
     @Body()
     project: {
       name: string;
       status: string;
       priority: string;
     },
+
   ) {
-    return this.projectsService.create(project);
+
+    return this.projectsService
+      .create(project);
   }
 
+  @UseGuards(
+    RolesGuard
+  )
+  @Roles('ADMIN')
   @Patch(':id')
   update(
-    @Param('id') id: string,
+
+    @Param('id')
+    id: string,
 
     @Body()
     updatedProject: {
@@ -54,17 +97,29 @@ export class ProjectsController {
       status?: string;
       priority?: string;
     },
+
   ) {
-    return this.projectsService.update(
-      +id,
-      updatedProject,
-    );
+
+    return this.projectsService
+      .update(
+        +id,
+        updatedProject,
+      );
   }
 
+  @UseGuards(
+    RolesGuard
+  )
+  @Roles('ADMIN')
   @Delete(':id')
   delete(
-    @Param('id') id: string,
+
+    @Param('id')
+    id: string,
+
   ) {
-    return this.projectsService.remove(+id);
+
+    return this.projectsService
+      .remove(+id);
   }
 }

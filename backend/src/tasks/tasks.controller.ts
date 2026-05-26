@@ -7,82 +7,133 @@ import {
   Patch,
   Post,
   UseGuards,
+  Query,
 } from '@nestjs/common';
 
-import { AuthGuard } from '@nestjs/passport';
+import { AuthGuard }
+from '@nestjs/passport';
 
-import { TasksService } from './tasks.service';
+import { TasksService }
+from './tasks.service';
 
 @Controller()
 export class TasksController {
 
   constructor(
-    private readonly tasksService: TasksService,
+    private readonly tasksService:
+    TasksService,
   ) {}
 
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(
+    AuthGuard('jwt')
+  )
   @Get('tasks/all')
-  findAllTasks() {
+  findAllTasks(
 
-    return this.tasksService
-      .findAllTasks();
-  }
+    @Query('page')
+    page = '1',
 
-  @UseGuards(AuthGuard('jwt'))
-  @Get('projects/:projectId/tasks')
-  findAll(
-    @Param('projectId')
-    projectId: string,
+    @Query('limit')
+    limit = '5',
+
   ) {
 
-    return this.tasksService.findAll(
-      +projectId,
-    );
+    return this.tasksService
+      .findAllTasks(
+        +page,
+        +limit,
+      );
   }
 
-  @UseGuards(AuthGuard('jwt'))
-  @Post('projects/:projectId/tasks')
+  @UseGuards(
+    AuthGuard('jwt')
+  )
+  @Get(
+    'projects/:projectId/tasks'
+  )
+  findAll(
+
+    @Param('projectId')
+    projectId: string,
+
+    @Query('page')
+    page = '1',
+
+    @Query('limit')
+    limit = '5',
+
+  ) {
+
+    return this.tasksService
+      .findAll(
+        +projectId,
+        +page,
+        +limit,
+      );
+  }
+
+  @UseGuards(
+    AuthGuard('jwt')
+  )
+  @Post(
+    'projects/:projectId/tasks'
+  )
   create(
+
     @Param('projectId')
     projectId: string,
 
     @Body()
     task: {
       name: string;
-      priority: string
+      priority: string;
     },
+
   ) {
 
-    return this.tasksService.create({
-      ...task,
-      projectId: +projectId,
-    });
+    return this.tasksService
+      .create({
+        ...task,
+        projectId:
+          +projectId,
+      });
   }
 
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(
+    AuthGuard('jwt')
+  )
   @Patch(
     'projects/:projectId/tasks/:taskId'
   )
   toggleComplete(
+
     @Param('taskId')
     taskId: string,
+
   ) {
 
     return this.tasksService
-      .toggleComplete(+taskId);
+      .toggleComplete(
+        +taskId
+      );
   }
 
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(
+    AuthGuard('jwt')
+  )
   @Delete(
     'projects/:projectId/tasks/:taskId'
   )
   remove(
+
     @Param('taskId')
     taskId: string,
+
   ) {
 
-    return this.tasksService.remove(
-      +taskId,
-    );
+    return this.tasksService
+      .remove(
+        +taskId,
+      );
   }
 }

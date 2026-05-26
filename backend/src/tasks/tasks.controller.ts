@@ -6,7 +6,10 @@ import {
   Param,
   Patch,
   Post,
+  UseGuards,
 } from '@nestjs/common';
+
+import { AuthGuard } from '@nestjs/passport';
 
 import { TasksService } from './tasks.service';
 
@@ -17,6 +20,7 @@ export class TasksController {
     private readonly tasksService: TasksService,
   ) {}
 
+  @UseGuards(AuthGuard('jwt'))
   @Get('tasks/all')
   findAllTasks() {
 
@@ -24,6 +28,7 @@ export class TasksController {
       .findAllTasks();
   }
 
+  @UseGuards(AuthGuard('jwt'))
   @Get('projects/:projectId/tasks')
   findAll(
     @Param('projectId')
@@ -35,6 +40,7 @@ export class TasksController {
     );
   }
 
+  @UseGuards(AuthGuard('jwt'))
   @Post('projects/:projectId/tasks')
   create(
     @Param('projectId')
@@ -53,6 +59,7 @@ export class TasksController {
     });
   }
 
+  @UseGuards(AuthGuard('jwt'))
   @Patch(
     'projects/:projectId/tasks/:taskId'
   )
@@ -65,6 +72,7 @@ export class TasksController {
       .toggleComplete(+taskId);
   }
 
+  @UseGuards(AuthGuard('jwt'))
   @Delete(
     'projects/:projectId/tasks/:taskId'
   )

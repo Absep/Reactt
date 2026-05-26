@@ -9,6 +9,8 @@ import {
 } from '@nestjs/common';
 
 import { ProjectsService } from './projects.service';
+import { UseGuards } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 
 @Controller('projects')
 export class ProjectsController {
@@ -17,6 +19,7 @@ export class ProjectsController {
     private readonly projectsService : ProjectsService,
   ) {}
 
+  @UseGuards(AuthGuard('jwt'))
   @Get()
   findAll() {
     return this.projectsService.findAll();

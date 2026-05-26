@@ -48,6 +48,8 @@ backend/nest-cli.json
 backend/package.json
 backend/prisma/migrations/20260522113346_project_model/migration.sql
 backend/prisma/migrations/20260525063700_add_task_model/migration.sql
+backend/prisma/migrations/20260525103926_add_task_priority/migration.sql
+backend/prisma/migrations/20260526041644_add_user_model/migration.sql
 backend/prisma/migrations/migration_lock.toml
 backend/prisma/schema.prisma
 backend/README.md
@@ -55,6 +57,12 @@ backend/src/app.controller.spec.ts
 backend/src/app.controller.ts
 backend/src/app.module.ts
 backend/src/app.service.ts
+backend/src/auth/auth.controller.spec.ts
+backend/src/auth/auth.controller.ts
+backend/src/auth/auth.module.ts
+backend/src/auth/auth.service.spec.ts
+backend/src/auth/auth.service.ts
+backend/src/auth/jwt.strategy/jwt.strategy.ts
 backend/src/main.ts
 backend/src/prisma/prisma.module.ts
 backend/src/prisma/prisma.service.spec.ts
@@ -180,6 +188,7 @@ demo-task/src/components/Card.jsx
 demo-task/src/components/Sidebar.jsx
 demo-task/src/index.css
 demo-task/src/main.jsx
+demo-task/src/pages/AllTasks.jsx
 demo-task/src/pages/Dashboard.jsx
 demo-task/src/pages/Projects.jsx
 demo-task/src/pages/Tasks.jsx
@@ -190,6 +199,230 @@ package.json
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path="backend/prisma/migrations/20260526041644_add_user_model/migration.sql">
+-- CreateTable
+CREATE TABLE "User" (
+    "id" SERIAL NOT NULL,
+    "email" TEXT NOT NULL,
+    "password" TEXT NOT NULL,
+
+    CONSTRAINT "User_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
+</file>
+
+<file path="backend/src/auth/auth.controller.spec.ts">
+import { Test, TestingModule } from '@nestjs/testing';
+import { AuthController } from './auth.controller';
+
+describe('AuthController', () => {
+  let controller: AuthController;
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      controllers: [AuthController],
+    }).compile();
+
+    controller = module.get<AuthController>(AuthController);
+  });
+
+  it('should be defined', () => {
+    expect(controller).toBeDefined();
+  });
+});
+</file>
+
+<file path="backend/src/auth/auth.controller.ts">
+import {
+  Body,
+  Controller,
+  Post,
+} from '@nestjs/common';
+
+import { AuthService } from './auth.service';
+
+@Controller('auth')
+export class AuthController {
+
+  constructor(
+    private authService: AuthService
+  ) {}
+
+  @Post('register')
+  register(
+    @Body() body: {
+      email: string;
+      password: string;
+    }
+  ) {
+    return this.authService.register(body);
+  }
+
+  @Post('login')
+  login(
+    @Body() body: {
+      email: string;
+      password: string;
+    }
+  ) {
+    return this.authService.login(body);
+  }
+}
+</file>
+
+<file path="backend/src/auth/auth.module.ts">
+import { Module } from '@nestjs/common';
+import { JwtModule } from '@nestjs/jwt';
+import { AuthController } from './auth.controller';
+import { AuthService } from './auth.service';
+import { PrismaModule } from '../prisma/prisma.module';
+import { JwtStrategy } from './jwt.strategy/jwt.strategy';
+
+@Module({
+  imports: [
+    PrismaModule,
+
+    JwtModule.register({
+      secret: process.env.JWT_SECRET,
+      signOptions: {
+        expiresIn: '1d',
+      },
+    }),
+  ],
+
+  controllers: [AuthController],
+
+  providers: [AuthService, 
+    JwtStrategy,
+  ],
+})
+export class AuthModule {}
+</file>
+
+<file path="backend/src/auth/auth.service.spec.ts">
+import { Test, TestingModule } from '@nestjs/testing';
+import { AuthService } from './auth.service';
+
+describe('AuthService', () => {
+  let service: AuthService;
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [AuthService],
+    }).compile();
+
+    service = module.get<AuthService>(AuthService);
+  });
+
+  it('should be defined', () => {
+    expect(service).toBeDefined();
+  });
+});
+</file>
+
+<file path="backend/src/auth/auth.service.ts">
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { JwtService } from '@nestjs/jwt';
+import * as bcrypt from 'bcryptjs';
+
+@Injectable()
+export class AuthService {
+
+  constructor(
+    private prisma: PrismaService,
+    private jwtService: JwtService,
+  ) {}
+
+  async register(user: {
+    email: string;
+    password: string;
+  }) {
+
+    const hashedPassword =
+      await bcrypt.hash(
+        user.password,
+        10
+      )
+
+    return this.prisma.user.create({
+      data: {
+        email: user.email,
+        password: hashedPassword
+      }
+    })
+  }
+  async login(user: {
+  email: string;
+  password: string;
+}) {
+
+  const foundUser =
+    await this.prisma.user.findUnique({
+      where: {
+        email: user.email,
+      },
+    });
+
+  if (!foundUser) {
+    return {
+      message: 'User not found',
+    };
+  }
+
+  const isPasswordCorrect =
+    await bcrypt.compare(
+      user.password,
+      foundUser.password,
+    );
+
+  if (!isPasswordCorrect) {
+    return {
+      message: 'Wrong password',
+    };
+  }
+
+  const token =
+    this.jwtService.sign({
+      id: foundUser.id,
+      email: foundUser.email,
+    });
+
+  return {
+    access_token: token,
+  };
+}
+}
+</file>
+
+<file path="backend/src/auth/jwt.strategy/jwt.strategy.ts">
+import { Injectable } from '@nestjs/common';
+import { PassportStrategy } from '@nestjs/passport';
+import { ExtractJwt, Strategy } from 'passport-jwt';
+
+@Injectable()
+export class JwtStrategy extends PassportStrategy(Strategy) {
+
+  constructor() {
+    super({
+      jwtFromRequest:
+        ExtractJwt.fromAuthHeaderAsBearerToken(),
+
+      ignoreExpiration: false,
+
+      secretOrKey:
+        process.env.JWT_SECRET!,
+    });
+  }
+
+  validate(payload: any) {
+    return payload;
+  }
+}
+</file>
 
 <file path="demo-task/.git/COMMIT_EDITMSG">
 routed and create button added
@@ -1299,6 +1532,7 @@ If you are developing a production application, we recommend using TypeScript wi
 
 <file path="demo-task/src/App.jsx">
 import { BrowserRouter, Routes, Route } from "react-router-dom"
+import AllTasks from "./pages/AllTasks"
 
 import Sidebar from "./components/Sidebar"
 
@@ -1339,6 +1573,11 @@ function App() {
             <Route
               path="/:projectName/tasks"
               element={<Tasks />}
+            />
+
+            <Route
+              path="/tasks"
+              element={<AllTasks />}
             />
 
           </Routes>
@@ -1434,10 +1673,11 @@ function Sidebar() {
         <Link
           to="/"
           className="
-            text-white
-            hover:text-blue-400
-            transition
-          "
+            block
+            p-3
+            rounded-lg
+            hover:bg-slate-700
+            transition"
         >
           Dashboard
         </Link>
@@ -1445,12 +1685,27 @@ function Sidebar() {
         <Link
           to="/projects"
           className="
-            text-white
-            hover:text-blue-400
+            block
+            p-3
+            rounded-lg
+            hover:bg-slate-700
             transition
           "
         >
           Projects
+        </Link>
+
+        <Link
+          to="/tasks"
+          className="
+            block
+            p-3
+            rounded-lg
+            hover:bg-slate-700
+            transition
+          "
+        >
+          Tasks
         </Link>
 
       </div>
@@ -1478,6 +1733,477 @@ createRoot(document.getElementById("root")).render(
 )
 </file>
 
+<file path="demo-task/src/pages/AllTasks.jsx">
+import { useEffect, useState } from "react"
+import axios from "axios"
+import Button from "../components/Button"
+
+function AllTasks() {
+
+  const [tasks, setTasks] =
+    useState([])
+
+  const [projects, setProjects] =
+    useState([])
+
+  const [taskName, setTaskName] =
+    useState("")
+
+  const [taskPriority,
+    setTaskPriority] =
+    useState("")
+
+  const [selectedProject,
+    setSelectedProject] =
+    useState("")
+
+  const [priorityFilter,
+    setPriorityFilter] =
+    useState("")
+
+  const [statusFilter,
+    setStatusFilter] =
+    useState("")
+
+  async function getTasks() {
+
+    const response =
+      await axios.get(
+        "http://localhost:3000/tasks/all"
+      )
+
+    setTasks(response.data)
+  }
+
+  async function getProjects() {
+
+    const response =
+      await axios.get(
+        "http://localhost:3000/projects"
+      )
+
+    setProjects(response.data)
+  }
+
+  async function addTask() {
+
+    if (
+      !taskName ||
+      !selectedProject ||
+      !taskPriority
+    ) return
+
+    await axios.post(
+      `http://localhost:3000/projects/${selectedProject}/tasks`,
+      {
+        name: taskName,
+        priority: taskPriority,
+      }
+    )
+
+    setTaskName("")
+    setSelectedProject("")
+    setTaskPriority("")
+
+    getTasks()
+  }
+
+  async function deleteTask(
+    projectId,
+    taskId
+  ) {
+
+    await axios.delete(
+      `http://localhost:3000/projects/${projectId}/tasks/${taskId}`
+    )
+
+    getTasks()
+  }
+
+  useEffect(() => {
+    getTasks()
+    getProjects()
+  }, [])
+
+  // FILTER TASKS
+  const filteredTasks =
+    tasks.filter(task => {
+
+      const priorityMatch =
+        !priorityFilter ||
+        task.priority ===
+        priorityFilter
+
+      const statusMatch =
+        statusFilter === ""
+        ||
+        String(
+          task.completed
+        ) === statusFilter
+
+      return (
+        priorityMatch &&
+        statusMatch
+      )
+    })
+
+  return (
+    <div>
+
+      <h1 className="
+        text-5xl
+        font-bold
+        mb-2
+      ">
+        All Tasks
+      </h1>
+
+      <p className="
+        text-gray-400
+        mb-8
+      ">
+        Manage all project tasks
+      </p>
+
+      {/* ADD TASK */}
+      <div className="
+        flex
+        gap-3
+        mb-5
+        flex-wrap
+      ">
+
+        <input
+          type="text"
+          placeholder="Task Name"
+          value={taskName}
+          onChange={(e) =>
+            setTaskName(
+              e.target.value
+            )
+          }
+          className="
+            p-3
+            rounded-lg
+            bg-slate-800
+            text-white
+          "
+        />
+
+        {/* PRIORITY */}
+        <select
+          value={taskPriority}
+          onChange={(e) =>
+            setTaskPriority(
+              e.target.value
+            )
+          }
+          className="
+            p-3
+            rounded-lg
+            bg-slate-800
+            text-white
+          "
+        >
+
+          <option value="">
+            Priority
+          </option>
+
+          <option value="High">
+            High
+          </option>
+
+          <option value="Medium">
+            Medium
+          </option>
+
+          <option value="Low">
+            Low
+          </option>
+
+        </select>
+
+        {/* PROJECT */}
+        <select
+          value={selectedProject}
+          onChange={(e) =>
+            setSelectedProject(
+              e.target.value
+            )
+          }
+          className="
+            p-3
+            rounded-lg
+            bg-slate-800
+            text-white
+          "
+        >
+
+          <option value="">
+            Select Project
+          </option>
+
+          {
+            projects.map(
+              project => (
+                <option
+                  key={project.id}
+                  value={project.id}
+                >
+                  {project.name}
+                </option>
+              )
+            )
+          }
+
+        </select>
+
+        <Button
+          text="Add Task"
+          onClick={addTask}
+        />
+
+      </div>
+
+      {/* FILTERS */}
+      <div className="
+        flex
+        gap-3
+        mb-8
+        flex-wrap
+      ">
+
+        <select
+          value={priorityFilter}
+          onChange={(e) =>
+            setPriorityFilter(
+              e.target.value
+            )
+          }
+          className="
+            p-3
+            rounded-lg
+            bg-slate-800
+            text-white
+          "
+        >
+
+          <option value="">
+            All Priority
+          </option>
+
+          <option value="High">
+            High
+          </option>
+
+          <option value="Medium">
+            Medium
+          </option>
+
+          <option value="Low">
+            Low
+          </option>
+
+        </select>
+
+        <select
+          value={statusFilter}
+          onChange={(e) =>
+            setStatusFilter(
+              e.target.value
+            )
+          }
+          className="
+            p-3
+            rounded-lg
+            bg-slate-800
+            text-white
+          "
+        >
+
+          <option value="">
+            All Status
+          </option>
+
+          <option value="true">
+            Completed
+          </option>
+
+          <option value="false">
+            Pending
+          </option>
+
+        </select>
+
+      </div>
+
+      {/* TABLE */}
+      <div className="
+        bg-slate-900
+        rounded-2xl
+        overflow-hidden
+        border
+        border-slate-700
+      ">
+
+        {/* HEADER */}
+        <div className="
+          grid
+          grid-cols-6
+          p-5
+          border-b
+          border-slate-700
+          font-bold
+          text-gray-300
+        ">
+
+          <p>Task</p>
+          <p>Project</p>
+          <p>Priority</p>
+          <p>Status</p>
+          <p>Task ID</p>
+          <p>Action</p>
+
+        </div>
+
+        {
+          filteredTasks.map(
+            (task, index) => (
+
+              <div
+                key={task.id}
+                className="
+                  grid
+                  grid-cols-6
+                  p-5
+                  border-b
+                  border-slate-800
+                  items-center
+                  hover:bg-slate-800
+                  transition
+                "
+              >
+
+                {/* TASK */}
+                <h3 className="
+                  font-bold
+                  text-lg
+                ">
+                  {task.name}
+                </h3>
+
+                {/* PROJECT */}
+                <p>
+                  {task.project.name}
+                </p>
+
+                {/* PRIORITY */}
+                <div>
+
+                  <span className={`
+                    px-3
+                    py-1
+                    rounded-full
+                    text-sm
+                    border
+
+                    ${
+                      task.priority ===
+                      "High"
+                        ? "bg-red-500/20 text-red-400 border-red-500/30"
+                        : task.priority ===
+                          "Medium"
+                        ? "bg-yellow-500/20 text-yellow-300 border-yellow-500/30"
+                        : "bg-blue-500/20 text-blue-400 border-blue-500/30"
+                    }
+                  `}>
+                    {task.priority}
+                  </span>
+
+                </div>
+
+                {/* STATUS */}
+                <div>
+
+                  {
+                    task.completed
+                      ? (
+                        <span className="
+                          bg-emerald-500/20
+                          text-emerald-400
+                          border
+                          border-emerald-500/30
+                          px-3
+                          py-1
+                          rounded-full
+                          text-sm
+                        ">
+                          Completed
+                        </span>
+                      )
+                      : (
+                        <span className="
+                          bg-amber-500/20
+                          text-amber-300
+                          border
+                          border-amber-500/30
+                          px-3
+                          py-1
+                          rounded-full
+                          text-sm
+                        ">
+                          Pending
+                        </span>
+                      )
+                  }
+
+                </div>
+
+                {/* TASK ID */}
+                <p>
+                  {task.projectId}
+                  {index + 1}
+                </p>
+
+                {/* DELETE */}
+                <button
+                  onClick={() =>
+                    deleteTask(
+                      task.projectId,
+                      task.id
+                    )
+                  }
+                  className="
+                    bg-rose-500/20
+                    text-rose-400
+                    border
+                    border-rose-500/30
+                    px-4
+                    py-2
+                    rounded-xl
+                    hover:bg-rose-500/30
+                    transition
+                    w-fit
+                  "
+                >
+                  Delete
+                </button>
+
+              </div>
+            )
+          )
+        }
+
+      </div>
+
+    </div>
+  )
+}
+
+export default AllTasks
+</file>
+
 <file path="demo-task/src/pages/Dashboard.jsx">
 import { useEffect, useState } from "react"
 import axios from "axios"
@@ -1500,6 +2226,14 @@ function Dashboard() {
     setPendingTasks] =
     useState(0)
 
+  const [recentProjects,
+    setRecentProjects] =
+    useState([])
+
+  const [recentTasks,
+    setRecentTasks] =
+    useState([])
+
   async function getDashboardData() {
 
     const projectsResponse =
@@ -1514,27 +2248,26 @@ function Dashboard() {
       projects.length
     )
 
-    let allTasks = []
+    setRecentProjects(
+      [...projects]
+        .reverse()
+        .slice(0, 4)
+    )
 
-    for (const project of projects) {
+    const tasksResponse =
+      await axios.get(
+        "http://localhost:3000/tasks/all"
+      )
 
-      const taskResponse =
-        await axios.get(
-          `http://localhost:3000/projects/${project.id}/tasks`
-        )
-
-      allTasks = [
-        ...allTasks,
-        ...taskResponse.data,
-      ]
-    }
+    const tasks =
+      tasksResponse.data
 
     setTaskCount(
-      allTasks.length
+      tasks.length
     )
 
     const completed =
-      allTasks.filter(
+      tasks.filter(
         task =>
           task.completed
       ).length
@@ -1544,8 +2277,14 @@ function Dashboard() {
     )
 
     setPendingTasks(
-      allTasks.length -
+      tasks.length -
       completed
+    )
+
+    setRecentTasks(
+      [...tasks]
+        .reverse()
+        .slice(0, 4)
     )
   }
 
@@ -1556,26 +2295,29 @@ function Dashboard() {
   return (
     <div>
 
-      <h1 className="text-5xl font-bold mb-8">
+      <h1 className="
+        text-5xl
+        font-bold
+        mb-8
+      ">
         Dashboard
       </h1>
 
+      {/* STATS */}
       <div className="
         flex
         gap-5
         flex-wrap
+        mb-10
       ">
 
         <div className="
           bg-slate-800
-          text-white
           p-6
           rounded-2xl
           w-[250px]
         ">
-          <h2 className="text-lg">
-            Total Projects
-          </h2>
+          <h2>Total Projects</h2>
 
           <p className="
             text-4xl
@@ -1588,14 +2330,11 @@ function Dashboard() {
 
         <div className="
           bg-slate-800
-          text-white
           p-6
           rounded-2xl
           w-[250px]
         ">
-          <h2 className="text-lg">
-            Total Tasks
-          </h2>
+          <h2>Total Tasks</h2>
 
           <p className="
             text-4xl
@@ -1608,20 +2347,17 @@ function Dashboard() {
 
         <div className="
           bg-slate-800
-          text-white
           p-6
           rounded-2xl
           w-[250px]
         ">
-          <h2 className="text-lg">
-            Completed Tasks
-          </h2>
+          <h2>Completed</h2>
 
           <p className="
             text-4xl
             font-bold
             mt-3
-            text-green-400
+            text-emerald-400
           ">
             {completedTasks}
           </p>
@@ -1629,23 +2365,137 @@ function Dashboard() {
 
         <div className="
           bg-slate-800
-          text-white
           p-6
           rounded-2xl
           w-[250px]
         ">
-          <h2 className="text-lg">
-            Pending Tasks
-          </h2>
+          <h2>Pending</h2>
 
           <p className="
             text-4xl
             font-bold
             mt-3
-            text-yellow-400
+            text-amber-400
           ">
             {pendingTasks}
           </p>
+        </div>
+
+      </div>
+
+      {/* RECENT */}
+      <div className="
+        grid
+        grid-cols-2
+        gap-8
+      ">
+
+        {/* RECENT PROJECTS */}
+        <div>
+
+          <h2 className="
+            text-2xl
+            font-bold
+            mb-4
+          ">
+            Recent Projects
+          </h2>
+
+          <div className="
+            bg-slate-900
+            rounded-2xl
+            overflow-hidden
+            border
+            border-slate-700
+          ">
+
+            {
+              recentProjects.map(
+                project => (
+
+                  <div
+                    key={project.id}
+                    className="
+                      p-5
+                      border-b
+                      border-slate-800
+                    "
+                  >
+
+                    <h3 className="
+                      font-bold
+                    ">
+                      {project.name}
+                    </h3>
+
+                    <p className="
+                      text-sm
+                      text-gray-400
+                    ">
+                      {project.status}
+                    </p>
+
+                  </div>
+                )
+              )
+            }
+
+          </div>
+
+        </div>
+
+        {/* RECENT TASKS */}
+        <div>
+
+          <h2 className="
+            text-2xl
+            font-bold
+            mb-4
+          ">
+            Recent Tasks
+          </h2>
+
+          <div className="
+            bg-slate-900
+            rounded-2xl
+            overflow-hidden
+            border
+            border-slate-700
+          ">
+
+            {
+              recentTasks.map(
+                task => (
+
+                  <div
+                    key={task.id}
+                    className="
+                      p-5
+                      border-b
+                      border-slate-800
+                    "
+                  >
+
+                    <h3 className="
+                      font-bold
+                    ">
+                      {task.name}
+                    </h3>
+
+                    <p className="
+                      text-sm
+                      text-gray-400
+                    ">
+                      {task.project.name}
+                    </p>
+
+                  </div>
+                )
+              )
+            }
+
+          </div>
+
         </div>
 
       </div>
@@ -1665,13 +2515,20 @@ import Button from "../components/Button"
 
 function Projects() {
 
-  const [projects, setProjects] = useState([])
+  const [projects, setProjects] =
+    useState([])
 
-  const [name, setName] = useState("")
-  const [status, setStatus] = useState("")
-  const [priority, setPriority] = useState("")
+  const [name, setName] =
+    useState("")
 
-  const navigate = useNavigate()
+  const [status, setStatus] =
+    useState("")
+
+  const [priority, setPriority] =
+    useState("")
+
+  const navigate =
+    useNavigate()
 
   async function getProjects() {
 
@@ -1680,15 +2537,23 @@ function Projects() {
         "http://localhost:3000/projects"
       )
 
-    setProjects(response.data)
+    setProjects(
+      response.data
+    )
   }
 
   async function addProject() {
 
+    if (
+      !name ||
+      !status ||
+      !priority
+    ) return
+
     const newProject = {
       name,
       status,
-      priority
+      priority,
     }
 
     await axios.post(
@@ -1703,6 +2568,15 @@ function Projects() {
     getProjects()
   }
 
+  async function deleteProject(id) {
+
+    await axios.delete(
+      `http://localhost:3000/projects/${id}`
+    )
+
+    getProjects()
+  }
+
   useEffect(() => {
     getProjects()
   }, [])
@@ -1710,24 +2584,37 @@ function Projects() {
   return (
     <div>
 
-      <h1 className="text-5xl font-bold mb-5">
+      {/* TITLE */}
+      <h1 className="
+        text-5xl
+        font-bold
+        mb-6
+      ">
         Projects
       </h1>
 
-      <div className="flex gap-3 mb-5 flex-wrap">
+      {/* ADD PROJECT */}
+      <div className="
+        flex
+        gap-3
+        mb-8
+        flex-wrap
+      ">
 
         <input
           type="text"
           placeholder="Project Name"
           value={name}
           onChange={(e) =>
-            setName(e.target.value)
+            setName(
+              e.target.value
+            )
           }
           className="
             p-3
             rounded-lg
-            text-white
             bg-slate-800
+            text-white
           "
         />
 
@@ -1736,13 +2623,15 @@ function Projects() {
           placeholder="Status"
           value={status}
           onChange={(e) =>
-            setStatus(e.target.value)
+            setStatus(
+              e.target.value
+            )
           }
           className="
             p-3
             rounded-lg
-            text-white
             bg-slate-800
+            text-white
           "
         />
 
@@ -1751,13 +2640,15 @@ function Projects() {
           placeholder="Priority"
           value={priority}
           onChange={(e) =>
-            setPriority(e.target.value)
+            setPriority(
+              e.target.value
+            )
           }
           className="
             p-3
             rounded-lg
-            text-white
             bg-slate-800
+            text-white
           "
         />
 
@@ -1768,41 +2659,197 @@ function Projects() {
 
       </div>
 
-      <div className="flex gap-5 flex-wrap">
+      {/* TABLE */}
+      <div className="
+        bg-slate-900
+        rounded-2xl
+        overflow-hidden
+        border
+        border-slate-700
+      ">
 
+        {/* HEADER */}
+        <div className="
+          grid
+          grid-cols-5
+          p-5
+          border-b
+          border-slate-700
+          font-bold
+          text-gray-300
+        ">
+
+          <p>Project</p>
+          <p>Status</p>
+          <p>Priority</p>
+          <p>Progress</p>
+          <p>Action</p>
+
+        </div>
+
+        {/* PROJECTS */}
         {
-          projects.map((project) => (
-            <div
-              key={project.id}
-              onClick={() =>
-                navigate(
-                  `/${project.name}/tasks`
-                )
-              }
-              className="
-                bg-slate-800
-                text-white
-                p-5
-                rounded-xl
-                w-[250px]
-                cursor-pointer
-                hover:bg-slate-700
-                transition
-              "
-            >
-              <h3 className="text-2xl font-bold">
-                {project.name}
-              </h3>
+          projects.map(
+            (project) => {
 
-              <p className="mt-3">
-                Status: {project.status}
-              </p>
+              const totalTasks =
+                project.tasks?.length || 0
 
-              <p>
-                Priority: {project.priority}
-              </p>
-            </div>
-          ))
+              const completedTasks =
+                project.tasks?.filter(
+                  task =>
+                    task.completed
+                ).length || 0
+
+              const progress =
+                totalTasks === 0
+                  ? 0
+                  : Math.round(
+                      (
+                        completedTasks /
+                        totalTasks
+                      ) * 100
+                    )
+
+              return (
+
+                <div
+                  key={project.id}
+                  onClick={() =>
+                    navigate(
+                      `/${project.name}/tasks`
+                    )
+                  }
+                  className="
+                    grid
+                    grid-cols-5
+                    p-5
+                    border-b
+                    border-slate-800
+                    items-center
+                    hover:bg-slate-800
+                    transition
+                    cursor-pointer
+                  "
+                >
+
+                  {/* PROJECT NAME */}
+                  <div>
+
+                    <h2 className="
+                      text-lg
+                      font-bold
+                    ">
+                      {project.name}
+                    </h2>
+
+                    <p className="
+                      text-sm
+                      text-gray-400
+                    ">
+                      Project ID:
+                      {project.id}
+                    </p>
+
+                  </div>
+
+                  {/* STATUS */}
+                  <div>
+
+                    <span className="
+                      bg-blue-500/20
+                      text-blue-400
+                      border
+                      border-blue-500/30
+                      px-3
+                      py-1
+                      rounded-full
+                      text-sm
+                    ">
+                      {project.status}
+                    </span>
+
+                  </div>
+
+                  {/* PRIORITY */}
+                  <div>
+
+                    <span className="
+                      bg-purple-500/20
+                      text-purple-400
+                      border
+                      border-purple-500/30
+                      px-3
+                      py-1
+                      rounded-full
+                      text-sm
+                    ">
+                      {project.priority}
+                    </span>
+
+                  </div>
+
+                  {/* PROGRESS */}
+                  <div>
+
+                    <p className="mb-2">
+                      {progress}%
+                    </p>
+
+                    <div className="
+                      w-[150px]
+                      h-3
+                      bg-slate-700
+                      rounded-full
+                    ">
+
+                      <div
+                        className="
+                          h-3
+                          bg-emerald-500
+                          rounded-full
+                          transition-all
+                        "
+                        style={{
+                          width:
+                            `${progress}%`
+                        }}
+                      />
+
+                    </div>
+
+                  </div>
+
+                  {/* DELETE */}
+                  <button
+                    onClick={(e) => {
+
+                      e.stopPropagation()
+
+                      deleteProject(
+                        project.id
+                      )
+                    }}
+                    className="
+                      bg-rose-500/20
+                      text-rose-400
+                      border
+                      border-rose-500/30
+                      px-4
+                      py-2
+                      rounded-xl
+                      hover:bg-rose-500/30
+                      transition
+                      w-fit
+                    "
+                  >
+                    Delete
+                  </button>
+
+                </div>
+              )
+            }
+          )
         }
 
       </div>
@@ -1901,80 +2948,103 @@ function Tasks() {
   }, [])
 
   return (
-    <div>
+  <div>
 
-      <h1 className="text-5xl font-bold mb-5">
-        {projectName} Tasks
-      </h1>
+    <h1 className="
+      text-5xl
+      font-bold
+      mb-6
+    ">
+      {projectName} Tasks
+    </h1>
 
+    {/* ADD TASK */}
+    <div className="
+      flex
+      gap-3
+      mb-8
+    ">
+
+      <input
+        type="text"
+        placeholder="Task Name"
+        value={taskName}
+        onChange={(e) =>
+          setTaskName(
+            e.target.value
+          )
+        }
+        className="
+          p-3
+          rounded-lg
+          bg-slate-800
+          text-white
+        "
+      />
+
+      <Button
+        text="Add Task"
+        onClick={addTask}
+      />
+
+    </div>
+
+    {/* TABLE */}
+    <div className="
+      bg-slate-900
+      rounded-2xl
+      overflow-hidden
+      border
+      border-slate-700
+    ">
+
+      {/* HEADER */}
       <div className="
-        flex
-        gap-3
-        mb-5
+        grid
+        grid-cols-4
+        p-5
+        border-b
+        border-slate-700
+        font-bold
+        text-gray-300
       ">
 
-        <input
-          type="text"
-          placeholder="Task Name"
-          value={taskName}
-          onChange={(e) =>
-            setTaskName(
-              e.target.value
-            )
-          }
-          className="
-            p-3
-            rounded-lg
-            bg-slate-800
-            text-white
-          "
-        />
-
-        <Button
-          text="Add Task"
-          onClick={addTask}
-        />
+        <p>Task</p>
+        <p>Status</p>
+        <p>Task ID</p>
+        <p>Action</p>
 
       </div>
 
-      <div className="
-        flex
-        gap-5
-        flex-wrap
-      ">
+      {/* TASKS */}
+      {
+        tasks.map(
+          (task, index) => (
 
-        {
-          tasks.map(
-            (task, index) => (
-              <div
-                key={task.id}
-                className="
-                  bg-slate-800
-                  text-white
-                  p-5
-                  rounded-2xl
-                  w-[280px]
-                  shadow-lg
-                "
-              >
+            <div
+              key={task.id}
+              className="
+                grid
+                grid-cols-4
+                p-5
+                border-b
+                border-slate-800
+                items-center
+                hover:bg-slate-800
+                transition
+              "
+            >
 
-                <p className="
-                  text-sm
-                  text-gray-400
-                  mb-2
-                ">
-                  Task ID:
-                  {projectId}
-                  {index + 1}
-                </p>
+              {/* TASK NAME */}
+              <div>
 
                 <h3
                   className={`
-                    text-xl
+                    text-lg
                     font-bold
                     ${
                       task.completed
-                        ? "line-through text-green-400"
+                        ? "line-through text-emerald-400"
                         : ""
                     }
                   `}
@@ -1982,75 +3052,114 @@ function Tasks() {
                   {task.name}
                 </h3>
 
-                <p className="
-                  mt-2
-                  text-sm
-                ">
-                  Status:
-                  {
-                    task.completed
-                      ? " ✅ Completed"
-                      : " ⏳ Pending"
-                  }
-                </p>
+              </div>
 
-                <div className="
-                  flex
-                  gap-2
-                  mt-4
-                ">
+              {/* STATUS */}
+              <div>
 
-                  <button
-                    onClick={() =>
-                      markCompleted(
-                        task.id
-                      )
-                    }
-                    className="
-                      bg-green-500
-                      px-4
-                      py-2
-                      rounded-lg
-                      hover:opacity-80
-                      transition
-                    "
-                  >
-                    {
-                      task.completed
-                        ? "Completed"
-                        : "Done"
-                    }
-                  </button>
-
-                  <button
-                    onClick={() =>
-                      deleteTask(
-                        task.id
-                      )
-                    }
-                    className="
-                      bg-red-500
-                      px-4
-                      py-2
-                      rounded-lg
-                      hover:opacity-80
-                      transition
-                    "
-                  >
-                    Delete
-                  </button>
-
-                </div>
+                {
+                  task.completed
+                    ? (
+                      <span className="
+                        bg-emerald-500/20
+                        text-emerald-400
+                        border
+                        border-emerald-500/30
+                        px-3
+                        py-1
+                        rounded-full
+                        text-sm
+                      ">
+                        Completed
+                      </span>
+                    )
+                    : (
+                      <span className="
+                        bg-amber-500/20
+                        text-amber-300
+                        border
+                        border-amber-500/30
+                        px-3
+                        py-1
+                        rounded-full
+                        text-sm
+                      ">
+                        Pending
+                      </span>
+                    )
+                }
 
               </div>
-            )
-          )
-        }
 
-      </div>
+              {/* TASK ID */}
+              <p>
+                {projectId}
+                {index + 1}
+              </p>
+
+              {/* ACTIONS */}
+              <div className="
+                flex
+                gap-3
+              ">
+
+                <button
+                  onClick={() =>
+                    markCompleted(
+                      task.id
+                    )
+                  }
+                  className="
+                    bg-emerald-500/20
+                    text-emerald-400
+                    border
+                    border-emerald-500/30
+                    px-4
+                    py-2
+                    rounded-xl
+                    hover:bg-emerald-500/30
+                    transition
+                  "
+                >
+                  {
+                    task.completed
+                      ? "Completed"
+                      : "Done"
+                  }
+                </button>
+
+                <button
+                  onClick={() =>
+                    deleteTask(
+                      task.id
+                    )
+                  }
+                  className="
+                    bg-rose-500/20
+                    text-rose-400
+                    border
+                    border-rose-500/30
+                    px-4
+                    py-2
+                    rounded-xl
+                    hover:bg-rose-500/30
+                    transition
+                  "
+                >
+                  Delete
+                </button>
+
+              </div>
+
+            </div>
+          )
+        )
+      }
 
     </div>
-  )
+
+  </div>
+)
 }
 
 export default Tasks
@@ -2277,9 +3386,14 @@ export default tseslint.config(
   "dependencies": {
     "@nestjs/common": "^11.0.1",
     "@nestjs/core": "^11.0.1",
+    "@nestjs/jwt": "^11.0.2",
     "@nestjs/mapped-types": "*",
+    "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
     "@prisma/client": "^5.22.0",
+    "bcryptjs": "^3.0.3",
+    "passport": "^0.7.0",
+    "passport-jwt": "^4.0.1",
     "prisma": "^5.22.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
@@ -2293,6 +3407,7 @@ export default tseslint.config(
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^24.0.0",
+    "@types/passport-jwt": "^4.0.1",
     "@types/supertest": "^7.0.0",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
@@ -2356,39 +3471,15 @@ CREATE TABLE "Task" (
 ALTER TABLE "Task" ADD CONSTRAINT "Task_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 </file>
 
+<file path="backend/prisma/migrations/20260525103926_add_task_priority/migration.sql">
+-- AlterTable
+ALTER TABLE "Task" ADD COLUMN     "priority" TEXT NOT NULL DEFAULT 'Medium';
+</file>
+
 <file path="backend/prisma/migrations/migration_lock.toml">
 # Please do not edit this file manually
 # It should be added in your version-control system (i.e. Git)
 provider = "postgresql"
-</file>
-
-<file path="backend/prisma/schema.prisma">
-generator client {
-  provider = "prisma-client-js"
-}
-
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
-model Project {
-  id        Int      @id @default(autoincrement())
-  name      String
-  status    String
-  priority  String
-
-  tasks     Task[]
-}
-
-model Task {
-  id          Int     @id @default(autoincrement())
-  name        String
-  completed   Boolean @default(false)
-
-  projectId   Int
-  project     Project @relation(fields: [projectId], references: [id])
-}
 </file>
 
 <file path="backend/README.md">
@@ -2539,9 +3630,10 @@ import { AppService } from './app.service';
 import { ProjectsModule } from './projects/projects.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { TasksModule } from './tasks/tasks.module';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
-  imports: [ProjectsModule, PrismaModule, TasksModule],
+  imports: [ProjectsModule, PrismaModule, TasksModule, AuthModule],
   controllers: [AppController],
   providers: [AppService],
 })
@@ -2672,6 +3764,8 @@ import {
 } from '@nestjs/common';
 
 import { ProjectsService } from './projects.service';
+import { UseGuards } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 
 @Controller('projects')
 export class ProjectsController {
@@ -2680,6 +3774,7 @@ export class ProjectsController {
     private readonly projectsService : ProjectsService,
   ) {}
 
+  @UseGuards(AuthGuard('jwt'))
   @Get()
   findAll() {
     return this.projectsService.findAll();
@@ -2767,69 +3862,6 @@ describe('ProjectsService', () => {
 });
 </file>
 
-<file path="backend/src/projects/projects.service.ts">
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-
-@Injectable()
-export class ProjectsService {
-
-  constructor(
-    private prisma: PrismaService,
-  ) {}
-
-  findAll() {
-    return this.prisma.project.findMany();
-  }
-
-  findOne(id: number) {
-    return this.prisma.project.findUnique({
-      where: {
-        id,
-      },
-    });
-  }
-
-  create(project: {
-    name: string;
-    status: string;
-    priority: string;
-  }) {
-
-    return this.prisma.project.create({
-      data: project,
-    });
-  }
-
-  update(
-    id: number,
-    updatedProject: {
-      name?: string;
-      status?: string;
-      priority?: string;
-    },
-  ) {
-
-    return this.prisma.project.update({
-      where: {
-        id,
-      },
-
-      data: updatedProject,
-    });
-  }
-
-  remove(id: number) {
-
-    return this.prisma.project.delete({
-      where: {
-        id,
-      },
-    });
-  }
-}
-</file>
-
 <file path="backend/src/tasks/dto/create-task.dto.ts">
 export class CreateTaskDto {}
 </file>
@@ -2868,93 +3900,6 @@ describe('TasksController', () => {
 });
 </file>
 
-<file path="backend/src/tasks/tasks.controller.ts">
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  Param,
-  Patch,
-  Post,
-} from '@nestjs/common';
-
-import { TasksService } from './tasks.service';
-
-@Controller('projects/:projectId/tasks')
-export class TasksController {
-
-  constructor(
-    private readonly tasksService: TasksService,
-  ) {}
-
-  @Get()
-  findAll(
-    @Param('projectId')
-    projectId: string,
-  ) {
-
-    return this.tasksService.findAll(
-      +projectId,
-    );
-  }
-
-  @Post()
-  create(
-    @Param('projectId')
-    projectId: string,
-
-    @Body()
-    task: {
-      name: string;
-    },
-  ) {
-
-    return this.tasksService.create({
-      ...task,
-      projectId: +projectId,
-    });
-  }
-
-  @Patch(':taskId')
-  toggleComplete(
-    @Param('taskId')
-    taskId: string,
-  ) {
-
-    return this.tasksService
-      .toggleComplete(+taskId);
-  }
-
-  @Delete(':taskId')
-  remove(
-    @Param('taskId')
-    taskId: string,
-  ) {
-
-    return this.tasksService.remove(
-      +taskId,
-    );
-  }
-}
-</file>
-
-<file path="backend/src/tasks/tasks.module.ts">
-import { Module } from '@nestjs/common';
-import { TasksService } from './tasks.service';
-import { TasksController } from './tasks.controller';
-import { PrismaModule } from '../prisma/prisma.module';
-
-@Module({
-  imports: [PrismaModule],
-
-  controllers: [TasksController],
-
-  providers: [TasksService],
-})
-export class TasksModule {}
-</file>
-
 <file path="backend/src/tasks/tasks.service.spec.ts">
 import { Test, TestingModule } from '@nestjs/testing';
 import { TasksService } from './tasks.service';
@@ -2974,60 +3919,6 @@ describe('TasksService', () => {
     expect(service).toBeDefined();
   });
 });
-</file>
-
-<file path="backend/src/tasks/tasks.service.ts">
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-
-@Injectable()
-export class TasksService {
-
-  constructor(
-    private prisma: PrismaService,
-  ) {}
-
-  findAll(projectId: number) {
-
-    return this.prisma.task.findMany({
-      where: {
-        projectId,
-      },
-    });
-  }
-
-  create(task: {
-    name: string;
-    projectId: number;
-  }) {
-
-    return this.prisma.task.create({
-      data: task,
-    });
-  }
-
-  remove(id: number) {
-
-    return this.prisma.task.delete({
-      where: {
-        id,
-      },
-    });
-  }
-
-  toggleComplete(id: number) {
-
-    return this.prisma.task.update({
-      where: {
-        id,
-      },
-
-      data: {
-        completed: true,
-      },
-    });
-  }
-}
 </file>
 
 <file path="backend/test/app.e2e-spec.ts">
@@ -3113,6 +4004,272 @@ describe('AppController (e2e)', () => {
 {
   "dependencies": {
     "axios": "^1.16.1"
+  }
+}
+</file>
+
+<file path="backend/prisma/schema.prisma">
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Project {
+  id        Int      @id @default(autoincrement())
+  name      String
+  status    String
+  priority  String   
+
+  tasks     Task[]
+}
+
+model Task {
+  id          Int     @id @default(autoincrement())
+  name        String
+  priority    String  @default("Medium")
+  completed   Boolean @default(false)
+
+  projectId   Int
+  project     Project @relation(fields: [projectId], references: [id])
+}
+model User {
+  id        Int    @id @default(autoincrement())
+  email     String @unique
+  password  String
+}
+</file>
+
+<file path="backend/src/projects/projects.service.ts">
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+
+@Injectable()
+export class ProjectsService {
+
+  constructor(
+    private prisma: PrismaService,
+  ) {}
+
+  findAll() {
+    
+  return this.prisma.project.findMany({
+    include: {
+      tasks: true,
+    },
+  });
+  }
+  
+
+  findOne(id: number) {
+    return this.prisma.project.findUnique({
+      where: {
+        id,
+      },
+    });
+  }
+
+  create(project: {
+    name: string;
+    status: string;
+    priority: string;
+  }) {
+
+    return this.prisma.project.create({
+      data: project,
+    });
+  }
+
+  update(
+    id: number,
+    updatedProject: {
+      name?: string;
+      status?: string;
+      priority?: string;
+    },
+  ) {
+
+    return this.prisma.project.update({
+      where: {
+        id,
+      },
+
+      data: updatedProject,
+    });
+  }
+
+  remove(id: number) {
+
+    return this.prisma.project.delete({
+      where: {
+        id,
+      },
+    });
+  }
+}
+</file>
+
+<file path="backend/src/tasks/tasks.module.ts">
+import { Module } from '@nestjs/common';
+import { TasksService } from './tasks.service';
+import { TasksController } from './tasks.controller';
+import { PrismaModule } from '../prisma/prisma.module';
+
+@Module({
+  imports: [PrismaModule],
+
+  controllers: [TasksController],
+
+  providers: [TasksService],
+})
+export class TasksModule {}
+</file>
+
+<file path="backend/src/tasks/tasks.controller.ts">
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+} from '@nestjs/common';
+
+import { TasksService } from './tasks.service';
+
+@Controller()
+export class TasksController {
+
+  constructor(
+    private readonly tasksService: TasksService,
+  ) {}
+
+  @Get('tasks/all')
+  findAllTasks() {
+
+    return this.tasksService
+      .findAllTasks();
+  }
+
+  @Get('projects/:projectId/tasks')
+  findAll(
+    @Param('projectId')
+    projectId: string,
+  ) {
+
+    return this.tasksService.findAll(
+      +projectId,
+    );
+  }
+
+  @Post('projects/:projectId/tasks')
+  create(
+    @Param('projectId')
+    projectId: string,
+
+    @Body()
+    task: {
+      name: string;
+      priority: string
+    },
+  ) {
+
+    return this.tasksService.create({
+      ...task,
+      projectId: +projectId,
+    });
+  }
+
+  @Patch(
+    'projects/:projectId/tasks/:taskId'
+  )
+  toggleComplete(
+    @Param('taskId')
+    taskId: string,
+  ) {
+
+    return this.tasksService
+      .toggleComplete(+taskId);
+  }
+
+  @Delete(
+    'projects/:projectId/tasks/:taskId'
+  )
+  remove(
+    @Param('taskId')
+    taskId: string,
+  ) {
+
+    return this.tasksService.remove(
+      +taskId,
+    );
+  }
+}
+</file>
+
+<file path="backend/src/tasks/tasks.service.ts">
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+
+@Injectable()
+export class TasksService {
+
+  constructor(
+    private prisma: PrismaService,
+  ) {}
+
+  findAll(projectId: number) {
+
+    return this.prisma.task.findMany({
+      where: {
+        projectId,
+      },
+    });
+  }
+
+  findAllTasks() {
+
+    return this.prisma.task.findMany({
+      include: {
+        project: true,
+      },
+    });
+  }
+
+  create(task: {
+    name: string;
+    projectId: number;
+  }) {
+
+    return this.prisma.task.create({
+      data: task,
+    });
+  }
+
+  remove(id: number) {
+
+    return this.prisma.task.delete({
+      where: {
+        id,
+      },
+    });
+  }
+
+  toggleComplete(id: number) {
+
+    return this.prisma.task.update({
+      where: {
+        id,
+      },
+
+      data: {
+        completed: true,
+      },
+    });
   }
 }
 </file>

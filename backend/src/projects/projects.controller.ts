@@ -34,6 +34,8 @@ export class ProjectsController {
   ) {}
 
   @Get()
+  @Get()
+@Get()
 findAll(
 
   @Query('page')
@@ -42,24 +44,32 @@ findAll(
   @Query('limit')
   limit = '5',
 
+  @Query('sortBy')
+  sortBy = 'id',
+
+  @Query('sortOrder')
+  sortOrder:
+    'asc' | 'desc'
+    = 'desc',
+
+  @Query('status')
+  status?: string,
+
+  @Query('priority')
+  priority?: string,
+
 ) {
 
   return this.projectsService
     .findAll(
       +page,
       +limit,
+      sortBy,
+      sortOrder,
+      status,
+      priority,
     );
 }
-
-  @Get(':id')
-  findOne(
-    @Param('id')
-    id: string,
-  ) {
-
-    return this.projectsService
-      .findOne(+id);
-  }
 
   @UseGuards(
     RolesGuard
@@ -78,7 +88,9 @@ findAll(
   ) {
 
     return this.projectsService
-      .create(project);
+      .create(
+        project
+      );
   }
 
   @UseGuards(
@@ -120,6 +132,8 @@ findAll(
   ) {
 
     return this.projectsService
-      .remove(+id);
+      .remove(
+        +id
+      );
   }
 }

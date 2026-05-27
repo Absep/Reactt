@@ -9,28 +9,48 @@ export class ProjectsService {
   ) {}
 
   findAll(
-  page: number,
-  limit: number,
-) {
+    page: number,
+    limit: number,
+    sortBy: string,
+    sortOrder: 'asc' | 'desc',
+    status?: string,
+    priority?: string,
+  ) {
 
-  const skip =
-    (page - 1)
-    * limit;
+    const skip =
+      (page - 1)
+      * limit;
 
-  return this.prisma
-    .project.findMany({
+    return this.prisma
+      .project.findMany({
 
-      skip,
-      take: limit,
+        where: {
 
-      include: {
-        tasks: true,
-      },
-    });
-}
-  
+          ...(status && {
+            status,
+          }),
+
+          ...(priority && {
+            priority,
+          }),
+        },
+
+        orderBy: {
+          [sortBy]:
+            sortOrder,
+        },
+
+        skip,
+        take: limit,
+
+        include: {
+          tasks: true,
+        },
+      });
+  }
 
   findOne(id: number) {
+
     return this.prisma.project.findUnique({
       where: {
         id,
